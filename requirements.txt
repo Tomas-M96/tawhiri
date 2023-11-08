@@ -6,7 +6,7 @@ eventlet
 gevent
 
 # Documentation
-sphinx
+sphinx==3.4.3
 docutils
 
 # Date parsing
