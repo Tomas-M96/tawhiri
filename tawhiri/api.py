@@ -403,13 +403,13 @@ def main():
     Single API endpoint which accepts GET requests.
     """
     g.request_start_time = time.time()
-    response = run_prediction(parse_request(request.args))
+    predictorResponse = run_prediction(parse_request(request.args))
     g.request_complete_time = time.time()
-    response['metadata'] = _format_request_metadata()
+    predictorResponse['metadata'] = _format_request_metadata()
 
     # Format the result data as per the users request
-    if response["request"]["format"] == "csv":
-        _formatted = format_csv(fix_data_longitudes(response))
+    if predictorResponse["request"]["format"] == "csv":
+        _formatted = format_csv(fix_data_longitudes(predictorResponse))
         return send_file(
             BytesIO(_formatted['data'].encode()),
             mimetype="text/csv",
@@ -417,18 +417,20 @@ def main():
             attachment_filename=_formatted['filename']
         )
 
-    elif response["request"]["format"] == "kml":
-        _formatted = format_kml(fix_data_longitudes(response))
+    elif predictorResponse["request"]["format"] == "kml":
+        _formatted = format_kml(fix_data_longitudes(predictorResponse))
         return send_file(
             BytesIO(_formatted['data'].encode()),
             as_attachment=True,
             attachment_filename=_formatted['filename']
         )
 
-    elif response["request"]["format"] == "json":
-        return jsonify(response)
+    elif predictorResponse["request"]["format"] == "json":
+        apiResponse = jsonify(predictorResponse)
+        apiResponse.headers.add("Access-Control-Allow-Origin", "*")
+        return apiResponse
     else:
-        raise InternalException("Format not supported: " + response["request"]["format"])
+        raise InternalException("Format not supported: " + predictorResponse["request"]["format"])
 
 
 
