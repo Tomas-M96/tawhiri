@@ -38,17 +38,20 @@ API_VERSION = 1
 LATEST_DATASET_KEYWORD = "latest"
 PROFILE_STANDARD = "standard_profile"
 PROFILE_FLOAT = "float_profile"
-PROFILE_REVERSE = "reverse_profile"
+PROFILE_REVERSE_FROM_AIR = "reverse_from_air_profile"
+PROFILE_REVERSE_FROM_LANDING = "reverse_from_landing_profile"
 STANDARD_FORMAT = "json"
 
 
 # Util functions ##############################################################
 def ruaumoko_ds():
     if not hasattr("ruaumoko_ds", "once"):
-        ds_loc = app.config.get('ELEVATION_DATASET', ElevationDataset.default_location)
+        ds_loc = app.config.get('ELEVATION_DATASET',
+                                ElevationDataset.default_location)
         ruaumoko_ds.once = ElevationDataset(ds_loc)
 
     return ruaumoko_ds.once
+
 
 def _rfc3339_to_timestamp(dt):
     """
@@ -118,8 +121,6 @@ def rate_clip(rate, minimum_rate=0.2):
         return rate
 
 
-
-
 # Request #####################################################################
 def parse_request(data):
     """
@@ -160,31 +161,38 @@ def parse_request(data):
     launch_alt = req["launch_altitude"]
 
     if req['profile'] == PROFILE_STANDARD:
-        req['ascent_rate'] = rate_clip(_extract_parameter(data, "ascent_rate", float,
-                                                validator=lambda x: x > 0))
-        req['burst_altitude'] = \
-            _extract_parameter(data, "burst_altitude", float,
-                               validator=lambda x: x > launch_alt)
-        req['descent_rate'] = rate_clip(_extract_parameter(data, "descent_rate", float,
-                                                 validator=lambda x: x > 0))
+        req['ascent_rate'] = rate_clip(_extract_parameter(
+            data, "ascent_rate", float, validator=lambda x: x > 0))
+        req['burst_altitude'] = _extract_parameter(
+            data, "burst_altitude", float, validator=lambda x: x > launch_alt)
+        req['descent_rate'] = rate_clip(_extract_parameter(
+            data, "descent_rate", float, validator=lambda x: x > 0))
+
     elif req['profile'] == PROFILE_FLOAT:
-        req['ascent_rate'] = rate_clip(_extract_parameter(data, "ascent_rate", float,
-                                                validator=lambda x: x > 0))
-        req['float_altitude'] = \
-            _extract_parameter(data, "float_altitude", float,
-                               validator=lambda x: x > launch_alt)
-        req['stop_datetime'] = \
-            _extract_parameter(data, "stop_datetime", _rfc3339_to_timestamp,
-                               validator=lambda x: x > req['launch_datetime'])
-    elif req['profile'] == PROFILE_REVERSE:
-        req['ascent_rate'] = rate_clip(_extract_parameter(data, "ascent_rate", float,
-                                                validator=lambda x: x > 0))
+        req['ascent_rate'] = rate_clip(_extract_parameter(
+            data, "ascent_rate", float, validator=lambda x: x > 0))
+        req['float_altitude'] = _extract_parameter(
+            data, "float_altitude", float, validator=lambda x: x > launch_alt)
+        req['stop_datetime'] = _extract_parameter(
+            data, "stop_datetime", _rfc3339_to_timestamp, validator=lambda x: x > req['launch_datetime'])
+
+    elif req['profile'] == PROFILE_REVERSE_FROM_AIR:
+        req['ascent_rate'] = rate_clip(_extract_parameter(
+            data, "ascent_rate", float, validator=lambda x: x > 0))
+
+    elif req['profile'] == PROFILE_REVERSE_FROM_LANDING:
+        req['ascent_rate'] = rate_clip(_extract_parameter(
+            data, "ascent_rate", float))
+        req['burst_altitude'] = _extract_parameter(
+            data, "burst_altitude", float)
+        req['descent_rate'] = rate_clip(_extract_parameter(
+            data, "descent_rate", float))
     else:
         raise RequestException("Unknown profile '%s'." % req['profile'])
 
     # Dataset
-    req['dataset'] = _extract_parameter(data, "dataset", _rfc3339_to_timestamp,
-                                        LATEST_DATASET_KEYWORD)
+    req['dataset'] = _extract_parameter(
+        data, "dataset", _rfc3339_to_timestamp, LATEST_DATASET_KEYWORD)
 
     return req
 
@@ -196,12 +204,10 @@ def parse_request_ruaumoko(data):
     req = {"version": API_VERSION}
 
     # Generic fields
-    req['latitude'] = \
-        _extract_parameter(data, "latitude", float,
-                           validator=lambda x: -90 <= x <= 90)
-    req['longitude'] = \
-        _extract_parameter(data, "longitude", float,
-                           validator=lambda x: 0 <= x < 360)
+    req['latitude'] = _extract_parameter(data, "latitude", float,
+                                         validator=lambda x: -90 <= x <= 90)
+    req['longitude'] = _extract_parameter(data, "longitude", float,
+                                          validator=lambda x: 0 <= x < 360)
 
     # Response dict
     resp = {
@@ -211,14 +217,15 @@ def parse_request_ruaumoko(data):
     warningcounts = WarningCounts()
 
     try:
-        resp['altitude'] = ruaumoko_ds().get(req['latitude'],req['longitude'])
+        resp['altitude'] = ruaumoko_ds().get(req['latitude'], req['longitude'])
     except Exception:
         raise InternalException("Internal exception experienced whilst " +
                                 "querying ruaumoko.")
-    
+
     resp["warnings"] = warningcounts.to_dict()
 
     return resp
+
 
 def parse_request_datasetcheck(data):
     """
@@ -248,10 +255,11 @@ def parse_request_datasetcheck(data):
         raise InvalidDatasetException("Could not find any dataset.")
     except Exception as e:
         raise InvalidDatasetException("Could not find any dataset.")
-    
+
     resp["warnings"] = warningcounts.to_dict()
 
     return resp
+
 
 def _extract_parameter(data, parameter, cast, default=None, ignore=False,
                        validator=None):
@@ -297,9 +305,11 @@ def run_prediction(req):
     # Dataset
     try:
         if req['dataset'] == LATEST_DATASET_KEYWORD:
-            tawhiri_ds = WindDataset.open_latest(persistent=True, directory=ds_dir)
+            tawhiri_ds = WindDataset.open_latest(
+                persistent=True, directory=ds_dir)
         else:
-            tawhiri_ds = WindDataset(datetime.fromtimestamp(req['dataset']), directory=ds_dir)
+            tawhiri_ds = WindDataset(datetime.fromtimestamp(
+                req['dataset']), directory=ds_dir)
     except IOError:
         raise InvalidDatasetException("No matching dataset found.")
     except ValueError as e:
@@ -307,7 +317,7 @@ def run_prediction(req):
 
     # Note that hours and minutes are set to 00 as Tawhiri uses hourly datasets
     resp['request']['dataset'] = \
-            tawhiri_ds.ds_time.strftime("%Y-%m-%dT%H:00:00Z")
+        tawhiri_ds.ds_time.strftime("%Y-%m-%dT%H:00:00Z")
 
     # Stages
     if req['profile'] == PROFILE_STANDARD:
@@ -323,25 +333,32 @@ def run_prediction(req):
                                       req['stop_datetime'],
                                       tawhiri_ds,
                                       warningcounts)
-    elif req['profile'] == PROFILE_REVERSE:
-        stages = models.reverse_profile(req['ascent_rate'],
-                                      tawhiri_ds,
-                                      ruaumoko_ds(),
-                                      warningcounts)
+    elif req['profile'] == PROFILE_REVERSE_FROM_AIR:
+        stages = models.reverse_from_air_profile(req['ascent_rate'],
+                                                 tawhiri_ds,
+                                                 ruaumoko_ds(),
+                                                 warningcounts)
+    elif req['profile'] == PROFILE_REVERSE_FROM_LANDING:
+        stages = models.reverse_from_landing_location(req['ascent_rate'],
+                                                      req['burst_altitude'],
+                                                      req['descent_rate'],
+                                                      tawhiri_ds,
+                                                      ruaumoko_ds(),
+                                                      warningcounts)
     else:
         raise InternalException("No implementation for known profile.")
 
     # Run solver
     try:
-        if req['profile'] == PROFILE_REVERSE:
+        if req['profile'] == PROFILE_REVERSE_FROM_AIR or req['profile'] == PROFILE_REVERSE_FROM_LANDING:
             # For the reverse prediction we simply set the time-step to be negative!
             result = solver.solve(req['launch_datetime'], req['launch_latitude'],
-                                req['launch_longitude'], req['launch_altitude'],
-                                stages, dt=-60.0)
+                                  req['launch_longitude'], req['launch_altitude'],
+                                  stages, dt=-60.0)
         else:
             result = solver.solve(req['launch_datetime'], req['launch_latitude'],
-                                req['launch_longitude'], req['launch_altitude'],
-                                stages)
+                                  req['launch_longitude'], req['launch_altitude'],
+                                  stages)
 
     except Exception as e:
         raise PredictionException("Prediction did not complete: '%s'." %
@@ -352,17 +369,16 @@ def run_prediction(req):
         resp['prediction'] = _parse_stages(["ascent", "descent"], result)
     elif req['profile'] == PROFILE_FLOAT:
         resp['prediction'] = _parse_stages(["ascent", "float"], result)
-    elif req['profile'] == PROFILE_REVERSE:
+    elif req['profile'] == PROFILE_REVERSE_FROM_AIR or req['profile'] == PROFILE_REVERSE_FROM_LANDING:
         resp['prediction'] = _parse_stages(["ascent", "descent"], result)
         # Extract the last entry as our launch site estimate.
         _launch_site = resp['prediction'][-1]['trajectory'][-1]
         resp['launch_estimate'] = {
-            'latitude': _launch_site['latitude'], 
+            'latitude': _launch_site['latitude'],
             'longitude': _launch_site['longitude'],
             'altitude': _launch_site['altitude'],
             'datetime': _timestamp_to_rfc3339(req['launch_datetime'])
         }
-
     else:
         raise InternalException("No implementation for known profile.")
 
@@ -391,12 +407,13 @@ def _parse_stages(labels, data):
             'longitude': lon,
             'altitude': alt,
             'datetime': _timestamp_to_rfc3339(dt),
-            } for dt, lat, lon, alt in leg]
+        } for dt, lat, lon, alt in leg]
         prediction.append(stage)
     return prediction
 
 
 # Flask App ###################################################################
+
 @app.route('/api/v{0}/'.format(API_VERSION), methods=['GET'])
 def main():
     """
@@ -430,8 +447,8 @@ def main():
         apiResponse.headers.add("Access-Control-Allow-Origin", "*")
         return apiResponse
     else:
-        raise InternalException("Format not supported: " + predictorResponse["request"]["format"])
-
+        raise InternalException(
+            "Format not supported: " + predictorResponse["request"]["format"])
 
 
 @app.route('/api/ruaumoko/', methods=['GET'])
@@ -444,6 +461,7 @@ def main_ruaumoko():
     g.request_complete_time = time.time()
     response['metadata'] = _format_request_metadata()
     return jsonify(response)
+
 
 @app.route('/api/datasetcheck', methods=['GET'])
 def main_datasetcheck():

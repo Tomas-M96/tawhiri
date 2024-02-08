@@ -80,6 +80,7 @@ def make_wind_velocity(dataset, warningcounts):
     """
     get_wind = interpolate.make_interpolator(dataset, warningcounts)
     dataset_epoch = calendar.timegm(dataset.ds_time.timetuple())
+
     def wind_velocity(t, lat, lng, alt):
         t -= dataset_epoch
         u, v = get_wind(t / 3600.0, lat, lng, alt)
@@ -98,6 +99,7 @@ def make_reverse_wind_velocity(dataset, warningcounts):
     """
     get_wind = interpolate.make_interpolator(dataset, warningcounts)
     dataset_epoch = calendar.timegm(dataset.ds_time.timetuple())
+
     def wind_velocity(t, lat, lng, alt):
         t -= dataset_epoch
         u, v = get_wind(t / 3600.0, lat, lng, alt)
@@ -133,6 +135,7 @@ def sea_level_termination(t, lat, lng, alt):
     if alt <= 0:
         return True
 
+
 def make_elevation_data_termination(dataset=None):
     """A termination criteria which terminates integration when the
        altitude goes below ground level, using the elevation data
@@ -142,6 +145,7 @@ def make_elevation_data_termination(dataset=None):
         return (dataset.get(lat, lng) > alt) or (alt <= 0)
     return tc
 
+
 def make_time_termination(max_time):
     """A time based termination criteria, which terminates integration when
        the current time is greater than `max_time` (a UNIX timestamp).
@@ -150,6 +154,7 @@ def make_time_termination(max_time):
         if t > max_time:
             return True
     return time_termination
+
 
 def make_dummy_termination():
     """A dummy termination criteria, which immediately terminates """
@@ -209,22 +214,7 @@ def standard_profile(ascent_rate, burst_altitude, descent_rate,
     return ((model_up, term_up), (model_down, term_down))
 
 
-def float_profile(ascent_rate, float_altitude, stop_time, dataset, warningcounts):
-    """Make a model chain for the typical floating balloon situation of ascent
-       at constant altitude to a float altitude which persists for some
-       amount of time before stopping. Descent is in general not modelled.
-    """
-
-    model_up = make_linear_model([make_constant_ascent(ascent_rate),
-                                  make_wind_velocity(dataset, warningcounts)])
-    term_up = make_burst_termination(float_altitude)
-    model_float = make_wind_velocity(dataset, warningcounts)
-    term_float = make_time_termination(stop_time)
-
-    return ((model_up, term_up), (model_float, term_float))
-
-
-def reverse_profile(ascent_rate, wind_dataset, elevation_dataset, warningcounts):
+def reverse_from_air_profile(ascent_rate, wind_dataset, elevation_dataset, warningcounts):
     """Make a model chain used to estimate a balloon's launch site location, based on
        the current position, and a known ascent rate. This model only works for a balloon
        on ascent.
@@ -235,12 +225,35 @@ def reverse_profile(ascent_rate, wind_dataset, elevation_dataset, warningcounts)
        Returns a tuple of (model, terminator) pairs.
     """
 
-    model_up = make_linear_model([make_constant_ascent(ascent_rate),
-                                  make_wind_velocity(wind_dataset, warningcounts)])
+    model_up = make_linear_model([make_constant_ascent(
+        ascent_rate), make_wind_velocity(wind_dataset, warningcounts)])
 
     term_up = make_dummy_termination()
 
-    model_down = make_linear_model([make_constant_ascent(abs(ascent_rate)),
+    model_down = make_linear_model([make_constant_ascent(
+        abs(ascent_rate)), make_wind_velocity(wind_dataset, warningcounts)])
+
+    term_down = make_elevation_data_termination(elevation_dataset)
+
+    return ((model_up, term_up), (model_down, term_down))
+
+
+def reverse_from_landing_location(ascent_rate, burst_altitude, descent_rate, wind_dataset, elevation_dataset, warningcounts):
+    """
+    Make a model chain used to estimate a balloon's launch site location, based on
+    a given landing location. This model works by simulating the ascent and descent in reverse.
+
+    Requires the balloon `ascent_rate`, `burst_altitude`, `descent_rate`,
+    and additionally requires the dataset to use for wind velocities.
+
+    Returns a tuple of (model, terminator) pairs.
+    """
+
+    model_up = make_linear_model([make_drag_descent(descent_rate),
+                                  make_wind_velocity(wind_dataset, warningcounts)])
+    term_up = make_burst_termination(burst_altitude)
+
+    model_down = make_linear_model([make_constant_ascent(ascent_rate),
                                     make_wind_velocity(wind_dataset, warningcounts)])
     term_down = make_elevation_data_termination(elevation_dataset)
 
