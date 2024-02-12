@@ -214,6 +214,21 @@ def standard_profile(ascent_rate, burst_altitude, descent_rate,
     return ((model_up, term_up), (model_down, term_down))
 
 
+def float_profile(ascent_rate, float_altitude, stop_time, dataset, warningcounts):
+    """Make a model chain for the typical floating balloon situation of ascent
+       at constant altitude to a float altitude which persists for some
+       amount of time before stopping. Descent is in general not modelled.
+    """
+
+    model_up = make_linear_model([make_constant_ascent(ascent_rate),
+                                  make_wind_velocity(dataset, warningcounts)])
+    term_up = make_burst_termination(float_altitude)
+    model_float = make_wind_velocity(dataset, warningcounts)
+    term_float = make_time_termination(stop_time)
+
+    return ((model_up, term_up), (model_float, term_float))
+
+
 def reverse_from_air_profile(ascent_rate, wind_dataset, elevation_dataset, warningcounts):
     """Make a model chain used to estimate a balloon's launch site location, based on
        the current position, and a known ascent rate. This model only works for a balloon
